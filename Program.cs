@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using TechnicalChallenge.API.Background;
 using TechnicalChallenge.API.Data;
+using TechnicalChallenge.API.Services;
 
 namespace TechnicalChallenge.API
 {
@@ -15,6 +17,10 @@ namespace TechnicalChallenge.API
 
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+            builder.Services.AddScoped<IScraperService, ScraperService>();
+            builder.Services.AddSingleton<ExtractionQueue>();
+            builder.Services.AddHostedService<ExtractionWorker>();
 
             var app = builder.Build();
 

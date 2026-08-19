@@ -138,7 +138,7 @@ public class ProductsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Devolver el producto actualizado (opcional, pero buena práctica)
+        // Devolver el producto actualizado
         var responseDto = new ProductResponseDto
         {
             Id = product.Id,
@@ -165,7 +165,7 @@ public class ProductsController : ControllerBase
             return NotFound();
         }
 
-        // Verificar si tiene ExtractionItems asociados (historial)
+        // Verificar si tiene ExtractionItems asociados 
         var hasItems = await _context.ExtractionItems
             .AnyAsync(ei => ei.ProductId == id);
 
