@@ -111,29 +111,47 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, productDto);
     }
 
-    // PUT: api/products/{id}
-    [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateProduct(int id, UpdateProductDto updateDto)
+    [HttpPatch("{id}")]
+    public async Task<IActionResult> PatchProduct(int id, PatchProductDto patchDto)
     {
         var product = await _context.Products.FindAsync(id);
-
         if (product == null)
         {
             return NotFound();
         }
 
-        // Actualizar solo los campos permitidos (ExternalId no se modifica)
-        product.Name = updateDto.Name;
-        product.Price = updateDto.Price;
-        product.Category = updateDto.Category;
-        product.Availability = updateDto.Availability;
-        product.Condition = updateDto.Condition;
-        product.Brand = updateDto.Brand;
-        product.SourceUrl = updateDto.SourceUrl;
+        // Actualizar solo los campos que vinieron en la petición
+        if (patchDto.Name != null)
+            product.Name = patchDto.Name;
+        if (patchDto.Price.HasValue)
+            product.Price = patchDto.Price.Value;
+        if (patchDto.Category != null)
+            product.Category = patchDto.Category;
+        if (patchDto.Availability != null)
+            product.Availability = patchDto.Availability;
+        if (patchDto.Condition != null)
+            product.Condition = patchDto.Condition;
+        if (patchDto.Brand != null)
+            product.Brand = patchDto.Brand;
+        if (patchDto.SourceUrl != null)
+            product.SourceUrl = patchDto.SourceUrl;
 
         await _context.SaveChangesAsync();
 
-        return NoContent(); // 204
+        // Devolver el producto actualizado (opcional, pero buena práctica)
+        var responseDto = new ProductResponseDto
+        {
+            Id = product.Id,
+            ExternalId = product.ExternalId,
+            Name = product.Name,
+            Price = product.Price,
+            Category = product.Category,
+            Availability = product.Availability,
+            Condition = product.Condition,
+            Brand = product.Brand,
+            SourceUrl = product.SourceUrl
+        };
+        return Ok(responseDto);
     }
 
     // DELETE: api/products/{id}

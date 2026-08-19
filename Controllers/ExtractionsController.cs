@@ -86,7 +86,7 @@ public class ExtractionsController : ControllerBase
         return Ok(response);
     }
 
-    // Método privado para procesar la extracción (sincrónico por ahora)
+    // Método privado para procesar la extracción
     private async Task ProcessExtractionAsync(int extractionId)
     {
         var extraction = await _context.Extractions
