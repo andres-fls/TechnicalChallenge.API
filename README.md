@@ -63,7 +63,7 @@ API REST construida con **ASP.NET Core** que permite:
 
 | Componente | Tecnología |
 | :--- | :--- |
-| **Lenguaje** | C# 12 / .NET 8 |
+| **Lenguaje** | C# 12 / .NET 10 |
 | **Framework** | ASP.NET Core Web API |
 | **ORM** | Entity Framework Core (SQL Server) |
 | **Base de datos** | SQL Server (LocalDB / Express) |
