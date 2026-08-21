@@ -67,48 +67,47 @@ public class ExtractionWorker : BackgroundService
 
     private async Task ProcessExtractionAsync(AppDbContext context, IScraperService scraper, int extractionId)
     {
-        var extraction = await context.Extractions
-            .Include(e => e.ExtractionItems)
-            .ThenInclude(ei => ei.Product)
-            .FirstOrDefaultAsync(e => e.Id == extractionId);
-
-        if (extraction == null) return;
+        // Variable para controlar si hubo fallos en items individuales
+        bool anyFailed = false;
 
         try
         {
+            // 1. Obtener la extracción con sus items y productos
+            var extraction = await context.Extractions
+                .Include(e => e.ExtractionItems)
+                .ThenInclude(ei => ei.Product)
+                .FirstOrDefaultAsync(e => e.Id == extractionId);
+
+            // Si no existe, salir
+            if (extraction == null)
+            {
+                _logger.LogWarning($"Extracción {extractionId} no encontrada");
+                return;
+            }
+
+            // 2. Marcar la extracción como Processing
             extraction.Status = ExtractionStatus.Processing;
             extraction.StartedAt = DateTime.UtcNow;
             await context.SaveChangesAsync();
+            _logger.LogInformation($"Extracción {extractionId} iniciada");
 
-            bool anyFailed = false;
-
-            // FILTRO: Solo procesar ítems que estén en estado Pending 
-            var pendingItems = extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending).ToList();
-
-            foreach (var item in extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending))
+            // 3. Procesar cada item (solo los pendientes con ProductId no nulo)
+            foreach (var item in extraction.ExtractionItems.Where(i => i.ProductId != null && i.Status == ExtractionItemStatus.Pending))
             {
-                // Si por algún motivo el producto es null, marcar como Failed
-                if (item.Product == null)
-                {
-                    item.Status = ExtractionItemStatus.Failed;
-                    item.ErrorMessage = "Producto no encontrado";
-                    item.CompletedAt = DateTime.UtcNow;
-                    anyFailed = true;
-                    await context.SaveChangesAsync();
-                    continue;
-                }
-
+                // Marcar item como Processing
                 item.Status = ExtractionItemStatus.Processing;
                 item.StartedAt = DateTime.UtcNow;
                 await context.SaveChangesAsync();
 
                 try
                 {
+                    // Scraping del producto
                     var product = await scraper.ScrapeProductAsync(
-                        item.Product.ExternalId,
-                        item.Product.SourceUrl
+                        item.Product!.ExternalId,
+                        item.Product!.SourceUrl
                     );
 
+                    // Actualizar el producto en BD
                     var existingProduct = await context.Products.FindAsync(item.ProductId);
                     if (existingProduct != null)
                     {
@@ -121,39 +120,54 @@ public class ExtractionWorker : BackgroundService
                         existingProduct.SourceUrl = product.SourceUrl;
                     }
 
+                    // Marcar item como Success
                     item.Status = ExtractionItemStatus.Success;
                     item.CompletedAt = DateTime.UtcNow;
                     await context.SaveChangesAsync();
+                    _logger.LogInformation($"Item {item.Id} (Producto {item.ProductId}) procesado con éxito");
                 }
                 catch (Exception ex)
                 {
+                    // Error en este item específico
                     item.Status = ExtractionItemStatus.Failed;
                     item.ErrorMessage = ex.Message;
                     item.CompletedAt = DateTime.UtcNow;
                     anyFailed = true;
                     await context.SaveChangesAsync();
+                    _logger.LogError(ex, $"Error en item {item.Id} (Producto {item.ProductId})");
                 }
             }
 
-            // Actualizar estado de la extracción al finalizar todos los items
+            // 4. Marcar la extracción como Completed o CompletedWithErrors
             extraction.CompletedAt = DateTime.UtcNow;
-            if (anyFailed)
-            {
-                extraction.Status = ExtractionStatus.CompletedWithErrors;
-            }
-            else
-            {
-                extraction.Status = ExtractionStatus.Completed;
-            }
+            extraction.Status = anyFailed ? ExtractionStatus.CompletedWithErrors : ExtractionStatus.Completed;
             await context.SaveChangesAsync();
+            _logger.LogInformation($"Extracción {extractionId} finalizada con estado {extraction.Status}");
         }
         catch (Exception ex)
         {
-            // Error fatal: marcar extracción como Failed
-            extraction.Status = ExtractionStatus.Failed;
-            extraction.CompletedAt = DateTime.UtcNow;
-            await context.SaveChangesAsync();
-            _logger.LogError(ex, "Error fatal procesando extracción {ExtractionId}", extractionId);
+            // ERROR FATAL: Algo grave ocurrió fuera del procesamiento de items
+            // (ej. error de BD, error al obtener la extracción, error al guardar, etc.)
+
+            _logger.LogError(ex, $"Error FATAL en extracción {extractionId}");
+
+            try
+            {
+                // Intentar marcar la extracción como Failed 
+                var extraction = await context.Extractions.FindAsync(extractionId);
+                if (extraction != null)
+                {
+                    extraction.Status = ExtractionStatus.Failed;
+                    extraction.CompletedAt = DateTime.UtcNow;
+                    await context.SaveChangesAsync();
+                    _logger.LogInformation($"Extracción {extractionId} marcada como Failed tras error fatal");
+                }
+            }
+            catch (Exception innerEx)
+            {
+                // Si incluso falla al marcar la extracción, solo logueamos
+                _logger.LogError(innerEx, $"No se pudo actualizar el estado de la extracción {extractionId} tras error fatal");
+            }
         }
     }
 }
