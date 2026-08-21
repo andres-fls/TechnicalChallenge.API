@@ -10,6 +10,9 @@ public class ExtractionWorker : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ExtractionQueue _queue;
     private readonly ILogger<ExtractionWorker> _logger;
+
+    // Límite de extracciones simultáneas (no de productos individuales).
+    // Esto mantiene un control conservador sobre el total de peticiones HTTP al sitio externo.
     private readonly SemaphoreSlim _semaphore = new(5);
 
     public ExtractionWorker(IServiceProvider serviceProvider, ExtractionQueue queue, ILogger<ExtractionWorker> logger)
@@ -82,7 +85,7 @@ public class ExtractionWorker : BackgroundService
             // FILTRO: Solo procesar ítems que estén en estado Pending 
             var pendingItems = extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending).ToList();
 
-            foreach (var item in pendingItems)
+            foreach (var item in extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending))
             {
                 // Si por algún motivo el producto es null, marcar como Failed
                 if (item.Product == null)

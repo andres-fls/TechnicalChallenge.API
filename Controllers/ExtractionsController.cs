@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Collections;
 using TechnicalChallenge.API.Background;
 using TechnicalChallenge.API.Data;
 using TechnicalChallenge.API.Dtos;
@@ -28,13 +27,14 @@ public class ExtractionsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> StartExtraction(ExtractionRequestDto request)
     {
-        if (request.ProductIds == null || !request.ProductIds.Any())
+        // Validar y deduplicar IDs
+        var distinctIds = request.ProductIds?.Distinct().ToList() ?? new List<int>();
+        if (!distinctIds.Any())
         {
             return BadRequest("Debe enviar al menos un ProductId");
         }
 
-        var distinctProductIds = request.ProductIds.Distinct().ToList();
-
+        // 1. Crear la Extraction
         var extraction = new Extraction
         {
             Status = ExtractionStatus.Pending,
@@ -43,38 +43,42 @@ public class ExtractionsController : ControllerBase
         _context.Extractions.Add(extraction);
         await _context.SaveChangesAsync();
 
+        // 2. Crear los ExtractionItems
         var items = new List<ExtractionItem>();
-        foreach (var productId in distinctProductIds)
+        foreach (var productId in distinctIds)
         {
             var product = await _context.Products.FindAsync(productId);
             if (product == null)
+            {
+                // Item fallido por producto inexistente
+                items.Add(new ExtractionItem
+                {
+                    ExtractionId = extraction.Id,
+                    ProductId = null,
+                    Status = ExtractionItemStatus.Failed,
+                    ErrorMessage = $"Producto con Id {productId} no encontrado",
+                    CompletedAt = DateTime.UtcNow
+                });
+            }
+            else
             {
                 items.Add(new ExtractionItem
                 {
                     ExtractionId = extraction.Id,
                     ProductId = productId,
-                    Status = ExtractionItemStatus.Failed,
-                    ErrorMessage = $"Producto con Id {productId} no encontrado",
-                    CompletedAt = DateTime.UtcNow
+                    Status = ExtractionItemStatus.Pending
                 });
-                continue;
             }
-
-            items.Add(new ExtractionItem
-            {
-                ExtractionId = extraction.Id,
-                ProductId = productId,
-                Status = ExtractionItemStatus.Pending
-            });
         }
         _context.ExtractionItems.AddRange(items);
         await _context.SaveChangesAsync();
 
+        // 3. Encolar la extracción para procesamiento en segundo plano
         _queue.Enqueue(extraction.Id);
 
+        // 4. Devolver 202 Accepted
         return Accepted(new { extractionId = extraction.Id, status = extraction.Status.ToString() });
     }
-
 
     // GET: api/extractions/{id}
     [HttpGet("{id}")]

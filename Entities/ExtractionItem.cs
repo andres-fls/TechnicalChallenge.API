@@ -10,7 +10,7 @@ public class ExtractionItem
     public int ExtractionId { get; set; }
 
     [Required]
-    public int ProductId { get; set; }
+    public int? ProductId { get; set; }
 
     [Required]
     public ExtractionItemStatus Status { get; set; } = ExtractionItemStatus.Pending;
@@ -24,5 +24,5 @@ public class ExtractionItem
 
     // Navegación
     public Extraction Extraction { get; set; } = null!;
-    public Product Product { get; set; } = null!;
+    public Product? Product { get; set; }
 }

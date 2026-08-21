@@ -3,7 +3,7 @@
 public class ExtractionItemResponseDto
 {
     public int Id { get; set; }
-    public int ProductId { get; set; }
+    public int? ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? ErrorMessage { get; set; }
