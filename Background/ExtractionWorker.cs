@@ -78,7 +78,7 @@ public class ExtractionWorker : BackgroundService
 
         bool anyFailed = false;
 
-        foreach (var item in extraction.ExtractionItems)
+        foreach (var item in extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending))
         {
             item.Status = ExtractionItemStatus.Processing;
             item.StartedAt = DateTime.UtcNow;
