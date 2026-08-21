@@ -64,7 +64,6 @@ public class ExtractionWorker : BackgroundService
 
     private async Task ProcessExtractionAsync(AppDbContext context, IScraperService scraper, int extractionId)
     {
-        
         var extraction = await context.Extractions
             .Include(e => e.ExtractionItems)
             .ThenInclude(ei => ei.Product)
@@ -72,53 +71,86 @@ public class ExtractionWorker : BackgroundService
 
         if (extraction == null) return;
 
-        extraction.Status = ExtractionStatus.Processing;
-        extraction.StartedAt = DateTime.UtcNow;
-        await context.SaveChangesAsync();
-
-        bool anyFailed = false;
-
-        foreach (var item in extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending))
+        try
         {
-            item.Status = ExtractionItemStatus.Processing;
-            item.StartedAt = DateTime.UtcNow;
+            extraction.Status = ExtractionStatus.Processing;
+            extraction.StartedAt = DateTime.UtcNow;
             await context.SaveChangesAsync();
 
-            try
-            {
-                var product = await scraper.ScrapeProductAsync(
-                    item.Product.ExternalId,
-                    item.Product.SourceUrl
-                );
+            bool anyFailed = false;
 
-                var existingProduct = await context.Products.FindAsync(item.ProductId);
-                if (existingProduct != null)
+            // FILTRO: Solo procesar ítems que estén en estado Pending 
+            var pendingItems = extraction.ExtractionItems.Where(i => i.Status == ExtractionItemStatus.Pending).ToList();
+
+            foreach (var item in pendingItems)
+            {
+                // Si por algún motivo el producto es null, marcar como Failed
+                if (item.Product == null)
                 {
-                    existingProduct.Name = product.Name;
-                    existingProduct.Price = product.Price;
-                    existingProduct.Category = product.Category;
-                    existingProduct.Availability = product.Availability;
-                    existingProduct.Condition = product.Condition;
-                    existingProduct.Brand = product.Brand;
-                    existingProduct.SourceUrl = product.SourceUrl;
+                    item.Status = ExtractionItemStatus.Failed;
+                    item.ErrorMessage = "Producto no encontrado";
+                    item.CompletedAt = DateTime.UtcNow;
+                    anyFailed = true;
+                    await context.SaveChangesAsync();
+                    continue;
                 }
 
-                item.Status = ExtractionItemStatus.Success;
-                item.CompletedAt = DateTime.UtcNow;
+                item.Status = ExtractionItemStatus.Processing;
+                item.StartedAt = DateTime.UtcNow;
                 await context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                item.Status = ExtractionItemStatus.Failed;
-                item.ErrorMessage = ex.Message;
-                item.CompletedAt = DateTime.UtcNow;
-                anyFailed = true;
-                await context.SaveChangesAsync();
-            }
-        }
 
-        extraction.CompletedAt = DateTime.UtcNow;
-        extraction.Status = anyFailed ? ExtractionStatus.CompletedWithErrors : ExtractionStatus.Completed;
-        await context.SaveChangesAsync();
+                try
+                {
+                    var product = await scraper.ScrapeProductAsync(
+                        item.Product.ExternalId,
+                        item.Product.SourceUrl
+                    );
+
+                    var existingProduct = await context.Products.FindAsync(item.ProductId);
+                    if (existingProduct != null)
+                    {
+                        existingProduct.Name = product.Name;
+                        existingProduct.Price = product.Price;
+                        existingProduct.Category = product.Category;
+                        existingProduct.Availability = product.Availability;
+                        existingProduct.Condition = product.Condition;
+                        existingProduct.Brand = product.Brand;
+                        existingProduct.SourceUrl = product.SourceUrl;
+                    }
+
+                    item.Status = ExtractionItemStatus.Success;
+                    item.CompletedAt = DateTime.UtcNow;
+                    await context.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    item.Status = ExtractionItemStatus.Failed;
+                    item.ErrorMessage = ex.Message;
+                    item.CompletedAt = DateTime.UtcNow;
+                    anyFailed = true;
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // Actualizar estado de la extracción al finalizar todos los items
+            extraction.CompletedAt = DateTime.UtcNow;
+            if (anyFailed)
+            {
+                extraction.Status = ExtractionStatus.CompletedWithErrors;
+            }
+            else
+            {
+                extraction.Status = ExtractionStatus.Completed;
+            }
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Error fatal: marcar extracción como Failed
+            extraction.Status = ExtractionStatus.Failed;
+            extraction.CompletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            _logger.LogError(ex, "Error fatal procesando extracción {ExtractionId}", extractionId);
+        }
     }
 }

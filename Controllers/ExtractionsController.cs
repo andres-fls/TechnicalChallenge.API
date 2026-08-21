@@ -26,14 +26,15 @@ public class ExtractionsController : ControllerBase
 
     // POST: api/extractions
     [HttpPost]
-    public async Task<ActionResult> StartExtraction(ExtractionRequestDto request)
+    public async Task<IActionResult> StartExtraction(ExtractionRequestDto request)
     {
         if (request.ProductIds == null || !request.ProductIds.Any())
         {
             return BadRequest("Debe enviar al menos un ProductId");
         }
 
-        // 1. Crear la Extraction
+        var distinctProductIds = request.ProductIds.Distinct().ToList();
+
         var extraction = new Extraction
         {
             Status = ExtractionStatus.Pending,
@@ -42,9 +43,8 @@ public class ExtractionsController : ControllerBase
         _context.Extractions.Add(extraction);
         await _context.SaveChangesAsync();
 
-        // 2. Crear los ExtractionItems
         var items = new List<ExtractionItem>();
-        foreach (var productId in request.ProductIds)
+        foreach (var productId in distinctProductIds)
         {
             var product = await _context.Products.FindAsync(productId);
             if (product == null)
@@ -70,10 +70,8 @@ public class ExtractionsController : ControllerBase
         _context.ExtractionItems.AddRange(items);
         await _context.SaveChangesAsync();
 
-        // 3. Encolar la extracción para procesamiento en segundo plano
         _queue.Enqueue(extraction.Id);
 
-        // 4. Devolver 202 Accepted
         return Accepted(new { extractionId = extraction.Id, status = extraction.Status.ToString() });
     }
 
