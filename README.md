@@ -14,7 +14,7 @@ API REST construida con **ASP.NET Core** que permite:
 ## 🚀 Cómo ejecutar el proyecto
 
 ### Prerrequisitos
-* [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+* [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 * [SQL Server](https://www.microsoft.com/es-es/sql-server/sql-server-downloads) (puede ser LocalDB, Express o Developer Edition)
 * [Visual Studio 2022](https://visualstudio.microsoft.com/es/) (opcional, pero recomendado)
 * Git (para clonar)
@@ -141,7 +141,7 @@ TechnicalChallenge.API/
 * **Actualización parcial con `PATCH`:**  
   Se implementa usando `PatchProductDto` con propiedades opcionales (`?`). Solo actualiza los campos que el cliente envía en la petición.
 * **Procesamiento asíncrono con `BackgroundService`:**  
-  Las extracciones se encolan en memoria (`ConcurrentQueue`). El worker consume la cola y procesa cada extracción en segundo plano. La concurrencia está limitada a 5 scraping simultáneos mediante `SemaphoreSlim`, cumpliendo con el requisito de no saturar la fuente externa.
+  Las extracciones se encolan en memoria (`ConcurrentQueue`). El worker consume la cola y procesa cada extracción en segundo plano. Límite de 5 extracciones en paralelo; cada extracción procesa sus productos secuencialmente para respetar la fuente externa.
 * **Manejo de fallos parciales:**  
   Cada `ExtractionItem` tiene su propio estado (`Success` / `Failed`). Si un producto falla, la extracción continúa con los demás. El estado final de la extracción será `CompletedWithErrors` si al menos un producto falló.
 
